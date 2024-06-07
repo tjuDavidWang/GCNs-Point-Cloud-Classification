@@ -1,3 +1,9 @@
+"""
+@Author: Weida Wang
+@Contact: tjudavidwang@gmail.com
+@File: EdgeGCN.py
+@Time: 2024/06/03 9:30 PM
+"""
 import math
 import torch
 from torch.nn.parameter import Parameter

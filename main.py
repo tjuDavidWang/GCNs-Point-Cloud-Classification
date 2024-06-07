@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-@Author: Yue Wang
-@Contact: yuewangx@mit.edu
-@File: main.py
-@Time: 2018/10/13 10:39 PM
+@Author: Weida Wang
+@Contact: tjudavidwang@gmail.com
+@File: EdgeGCN.py
+@Time: 2024/06/07 10:45 AM
 """
 
 
@@ -31,7 +31,6 @@ import wandb
 
 from GCN import GCN
 from DeepGCN import DeepGCN
-from CenGCN import CenGCN
 from EdgeGCN import EdgeGCN
 def _init_():
     if not os.path.exists('checkpoints'):
@@ -61,12 +60,10 @@ def train(args, io):
         model = PointNet(args).to(device)
     elif args.model == 'dgcnn':
         model = DGCNN(args).to(device)
-    elif args.model == 'gcn':
+    elif args.model == 'GCN':
         model = GCN(args).to(device)
     elif args.model == 'DeepGCN':
         model = DeepGCN(args).to(device)
-    elif args.model == 'cengcn':
-        model = CenGCN(args).to(device)
     elif args.model == 'EdgeGCN':
         model = EdgeGCN(args).to(device)
     else:
@@ -137,7 +134,11 @@ def train(args, io):
         model.eval()
         test_pred = []
         test_true = []
-        for data, label in test_loader:
+        num_batches = len(test_loader)
+
+        for batch_idx, (data, label) in enumerate(test_loader):
+            if batch_idx == num_batches-1 and args.model == 'pointnet':
+                break
             data, label = data.to(device), label.to(device).squeeze()
             data = data.permute(0, 2, 1)
             batch_size = data.size()[0]
@@ -176,7 +177,20 @@ def test(args, io):
     device = torch.device("cuda" if args.cuda else "cpu")
 
     #Try to load models
-    model = DGCNN(args).to(device)
+    if args.model == 'pointnet':
+        model = PointNet(args).to(device)
+    elif args.model == 'dgcnn':
+        model = DGCNN(args).to(device)
+    elif args.model == 'GCN':
+        model = GCN(args).to(device)
+    elif args.model == 'DeepGCN':
+        model = DeepGCN(args).to(device)
+    elif args.model == 'EdgeGCN':
+        model = EdgeGCN(args).to(device)
+    else:
+        raise Exception("Not implemented")
+    print(str(model))
+
     model = nn.DataParallel(model)
     model.load_state_dict(torch.load(args.model_path))
     model = model.eval()
@@ -204,10 +218,10 @@ def test(args, io):
 if __name__ == "__main__":
     # Training settings
     parser = argparse.ArgumentParser(description='Point Cloud Recognition')
-    parser.add_argument('--exp_name', type=str, default='EdgeGCN-10', metavar='N',
+    parser.add_argument('--exp_name', type=str, default='EdgeGCN', metavar='N',
                         help='Name of the experiment')
     parser.add_argument('--model', type=str, default='EdgeGCN', metavar='N',
-                        choices=['pointnet', 'dgcnn', 'gcn', 'DeepGCN','cengcn','EdgeGCN'],
+                        choices=['pointnet', 'dgcnn', 'GCN', 'DeepGCN','EdgeGCN'],
                         help='Model to use, [pointnet, dgcnn]')
     parser.add_argument('--dataset', type=str, default='modelnet40', metavar='N',
                         choices=['modelnet40'])
@@ -233,11 +247,11 @@ if __name__ == "__main__":
                         help='num of points to use')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout rate')
-    parser.add_argument('--emb_dims', type=int, default=1024, metavar='N',
+    parser.add_argument('--emb_dims', type=int, default=2048, metavar='N',
                         help='Dimension of embeddings')
     parser.add_argument('--k', type=int, default=20, metavar='N',
                         help='Num of nearest neighbors to use')
-    parser.add_argument('--model_path', type=str, default='', metavar='N',
+    parser.add_argument('--model_path', type=str, default='pretrained/model.t7', metavar='N',
                         help='Pretrained model path')
     parser.add_argument('--in_channels', type=int, default=3, help='Dimension of input ')
     parser.add_argument('--n_classes', type=int, default=40, help='Dimension of out_channels ')
@@ -248,7 +262,7 @@ if __name__ == "__main__":
     parser.add_argument('--act', default='relu', type=str, help='activation layer {relu, prelu, leakyrelu}')
     parser.add_argument('--norm', default='batch', type=str, help='batch or instance normalization {batch, instance}')
     parser.add_argument('--bias', default=True, type=bool, help='bias of conv layer True or False')
-    parser.add_argument('--n_blocks', type=int, default=8, help='number of basic blocks in the backbone')
+    parser.add_argument('--n_blocks', type=int, default=14, help='number of basic blocks in the backbone')
     parser.add_argument('--n_filters', default=64, type=int, help='number of channels of deep features')   
     # dilated knn
     parser.add_argument('--use_dilation', default=True, type=bool, help='use dilated knn or not')
