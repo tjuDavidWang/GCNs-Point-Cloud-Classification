@@ -4,7 +4,7 @@ Implementing 3D point cloud classification on [ModelNet40](https://modelnet.cs.p
 
 ## Overview
 
-![framework](.\imgs\framework.png)
+[![framework](.\imgs\framework.png)](https://github.com/tjuDavidWang/Point-Cloud-Classification-with-Multi-GCN/blob/main/imgs/framework.png)
 
 4 main modules：**Residual Block**, **EdgeConv Operation**, **Dynamic Graph Construction**,  and **Dilation Convolution**.
 
