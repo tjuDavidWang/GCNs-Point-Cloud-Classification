@@ -8,7 +8,7 @@ Implementing 3D point cloud classification on [ModelNet40](https://modelnet.cs.p
 
 4 main modules：**Residual Block**, **EdgeConv Operation**, **Dynamic Graph Construction**,  and **Dilation Convolution**.
 
-<img src=".\imgs\exp.png" alt="exp" style="zoom:15%;" />
+<img src=".\imgs\exp.png" alt="exp" style="zoom:5%;" />
 
 ## Dataset Preparation
 
