@@ -2,7 +2,7 @@
 @Author: Weida Wang
 @Contact: tjudavidwang@gmail.com
 @File: EdgeGCN.py
-@Time: 2024/06/07 1:30 AM
+@Time: 2024/06/15 1:44 AM
 """
 
 import argparse
@@ -15,6 +15,20 @@ import torch.nn.functional as F
 
 class EdgeGCNLayer(nn.Module):
     def __init__(self, in_channels, out_channels, k=20, dropout=0.0, dynamic=True, dilation=1, stochastic=True, epsilon=0.2, head=True):
+        """
+        Initialize the EdgeGCNLayer.
+
+        Parameters:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        k (int): Number of nearest neighbors.
+        dropout (float): Dropout rate.
+        dynamic (bool): Whether to use dynamic graph construction.
+        dilation (int): Dilation rate for the convolution.
+        stochastic (bool): Whether to use stochastic graph construction.
+        epsilon (float): Epsilon value for stochastic graph construction.
+        head (bool): Indicates if this is the head layer.
+        """
         super(EdgeGCNLayer, self).__init__()
         self.k = int(k)  # Number of nearest neighbors
         self.in_channels = in_channels
@@ -36,6 +50,7 @@ class EdgeGCNLayer(nn.Module):
         self.model_init()
 
     def model_init(self):
+        """Initialize model parameters."""
         for m in self.modules():
             if isinstance(m, torch.nn.Conv2d):
                 torch.nn.init.kaiming_normal_(m.weight)
@@ -45,7 +60,16 @@ class EdgeGCNLayer(nn.Module):
                     m.bias.requires_grad = True
 
     def knn(self, x, k):
-        """Compute k-nearest neighbors for each point in the point cloud."""
+        """
+        Compute k-nearest neighbors for each point in the point cloud.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_dims, num_points).
+        k (int): Number of nearest neighbors.
+
+        Returns:
+        torch.Tensor: Indices of k-nearest neighbors.
+        """
         with torch.no_grad():
             x = x.detach()
             if len(x.shape) == 3:
@@ -70,7 +94,16 @@ class EdgeGCNLayer(nn.Module):
         return idx
 
     def dense_knn_matrix(self, x, k=20):
-        """Compute dense k-nearest neighbors matrix."""
+        """
+        Compute dense k-nearest neighbors matrix.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_points, num_dims).
+        k (int): Number of nearest neighbors.
+
+        Returns:
+        torch.Tensor: Dense k-nearest neighbors matrix.
+        """
         with torch.no_grad():
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             batch_size, n_points, n_dims = x.shape
@@ -79,7 +112,16 @@ class EdgeGCNLayer(nn.Module):
         return torch.stack((nn_idx, center_idx), dim=0)
 
     def init_knn(self, x, k):
-        """Initialize k-nearest neighbors for the input."""
+        """
+        Initialize k-nearest neighbors for the input.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_channels, num_points).
+        k (int): Number of nearest neighbors.
+
+        Returns:
+        torch.Tensor: Indices of k-nearest neighbors.
+        """
         x = x.squeeze(-1)
         B, C, N = x.shape
         edge_index = []
@@ -91,21 +133,41 @@ class EdgeGCNLayer(nn.Module):
         return edge_index
     
     def batched_index_select(self, x, idx):
-        """Perform batched index selection."""
+        """
+        Perform batched index selection.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_dims, num_vertices).
+        idx (torch.Tensor): Indices tensor.
+
+        Returns:
+        torch.Tensor: Selected features tensor.
+        """
         batch_size, num_dims, num_vertices = x.shape[:3]
         k = idx.shape[-1]
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = x.device
         idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1) * num_vertices
         idx = idx + idx_base
-        idx = idx.contiguous().view(-1)
+        idx = idx.view(-1)
 
-        x = x.transpose(2, 1)
-        feature = x.contiguous().view(batch_size * num_vertices, -1)[idx, :]
-        feature = feature.view(batch_size, num_vertices, k, num_dims).permute(0, 3, 1, 2).contiguous()
-        return feature  # batch_size, k, num_dims, num_vertices
+        x = x.transpose(2, 1).contiguous()  # 确保张量在内存中是连续的，以便后续的view操作不会引发不必要的拷贝
+        feature = torch.index_select(x.view(batch_size * num_vertices, num_dims), 0, idx)  # 直接在展平的张量上进行索引选择，避免多次reshape操作
+        feature = feature.view(batch_size, num_vertices, k, num_dims).permute(0, 3, 1, 2)  # 调整张量维度
+        return feature  # batch_size, num_dims, num_vertices, k
+
+
 
     def get_graph_feature(self, x, idx=None):
-        """Compute graph features for the input."""
+        """
+        Compute graph features for the input.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_dims, num_points).
+        idx (torch.Tensor, optional): Indices tensor.
+
+        Returns:
+        tuple: Feature tensor and indices tensor.
+        """
         batch_size = x.size(0)
         num_points = x.size(2)
         x = x.view(batch_size, -1, num_points)
@@ -135,7 +197,16 @@ class EdgeGCNLayer(nn.Module):
         return feature, idx
 
     def forward(self, x, edge_idx=None):
-        """Forward pass of the EdgeGCN layer."""
+        """
+        Forward pass of the EdgeGCN layer.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_dims, num_points).
+        edge_idx (torch.Tensor, optional): Edge indices tensor.
+
+        Returns:
+        tuple: Output tensor and edge indices tensor.
+        """
         batch_size, num_dims, num_points = x.size()
         x, edge_idx = self.get_graph_feature(x, edge_idx)  # (batch_size, 2*num_dims, num_points, k)
         x = self.conv(x)  # (batch_size, out_channels, num_points, k)
@@ -144,6 +215,18 @@ class EdgeGCNLayer(nn.Module):
 
 class ResGCNLayer(nn.Module):
     def __init__(self, in_channels, out_channels, k, dropout=0., dynamic=True, dilation=1, head=False):
+        """
+        Initialize the ResGCNLayer.
+
+        Parameters:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        k (int): Number of nearest neighbors.
+        dropout (float): Dropout rate.
+        dynamic (bool): Whether to use dynamic graph construction.
+        dilation (int): Dilation rate for the convolution.
+        head (bool): Indicates if this is the head layer.
+        """
         super(ResGCNLayer, self).__init__()
         self.gcn = EdgeGCNLayer(in_channels, out_channels, k=k, dropout=dropout, dynamic=dynamic, dilation=dilation, head=head)
         self.residual = nn.Sequential(
@@ -152,13 +235,29 @@ class ResGCNLayer(nn.Module):
         ) if in_channels != out_channels else nn.Identity()
 
     def forward(self, x, edge_idx):
-        """Forward pass of the ResGCN layer."""
+        """
+        Forward pass of the ResGCN layer.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, in_channels, num_points).
+        edge_idx (torch.Tensor): Edge indices tensor.
+
+        Returns:
+        tuple: Output tensor and edge indices tensor.
+        """
         out, edge_idx = self.gcn(x, edge_idx)
         res = self.residual(x)
         return F.relu(out + res), edge_idx
 
 class EdgeGCN(nn.Module):
     def __init__(self, args, output_channels=40):
+        """
+        Initialize the EdgeGCN network.
+
+        Parameters:
+        args (argparse.Namespace): Arguments for the network configuration.
+        output_channels (int): Number of output channels (default is 40).
+        """
         super(EdgeGCN, self).__init__()
         self.args = args
         self.k = args.k
@@ -202,7 +301,15 @@ class EdgeGCN(nn.Module):
         self.linear3 = nn.Linear(256, output_channels)
 
     def forward(self, x):
-        """Forward pass of the EdgeGCN network."""
+        """
+        Forward pass of the EdgeGCN network.
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_channels, num_points).
+
+        Returns:
+        torch.Tensor: Output tensor of shape (batch_size, num_classes).
+        """
         batch_size = x.size(0)
         num_points = x.size(2)
 
@@ -256,4 +363,4 @@ if __name__ == "__main__":
     print(x.shape)
     model = EdgeGCN(args).to(device)
     out = model.forward(x)
-    print(out.shape)  # Expected shape: (batch_size, out_channels, num_points)
+    print(out.shape)  # Expected shape: (batch_size, num_classes)

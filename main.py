@@ -4,7 +4,7 @@
 @Author: Weida Wang
 @Contact: tjudavidwang@gmail.com
 @File: EdgeGCN.py
-@Time: 2024/06/07 10:45 AM
+@Time: 2024/06/15 1:44 AM
 """
 
 
@@ -33,16 +33,38 @@ from GCN import GCN
 from DeepGCN import DeepGCN
 from EdgeGCN import EdgeGCN
 def _init_():
-    if not os.path.exists('checkpoints'):
-        os.makedirs('checkpoints')
-    if not os.path.exists('checkpoints/'+args.exp_name):
-        os.makedirs('checkpoints/'+args.exp_name)
-    if not os.path.exists('checkpoints/'+args.exp_name+'/'+'models'):
-        os.makedirs('checkpoints/'+args.exp_name+'/'+'models')
-    os.system('cp main.py checkpoints'+'/'+args.exp_name+'/'+'main.py.backup')
-    os.system('cp GCN.py checkpoints' + '/' + args.exp_name + '/' + 'GCN.py.backup')
-    os.system('cp EdgeGCN.py checkpoints' + '/' + args.exp_name + '/' + 'EdgeGCN.py.backup')
-
+    try:
+        if not os.path.exists('checkpoints'):
+            os.makedirs('checkpoints')
+        if not os.path.exists(f'checkpoints/{args.exp_name}'):
+            os.makedirs(f'checkpoints/{args.exp_name}')
+        if not os.path.exists(f'checkpoints/{args.exp_name}/models'):
+            os.makedirs(f'checkpoints/{args.exp_name}/models')
+        os.system(f'cp main.py checkpoints/{args.exp_name}/main.py.backup')
+        os.system(f'cp GCN.py checkpoints/{args.exp_name}/GCN.py.backup')
+        os.system(f'cp EdgeGCN.py checkpoints/{args.exp_name}/EdgeGCN.py.backup')
+    except Exception as e:
+        print(f"Error during initialization: {e}")
+        
+def load_model(args, device):
+    try:
+        if args.model == 'pointnet':
+            model = PointNet(args).to(device)
+        elif args.model == 'dgcnn':
+            model = DGCNN(args).to(device)
+        elif args.model == 'GCN':
+            model = GCN(args).to(device)
+        elif args.model == 'DeepGCN':
+            model = DeepGCN(args).to(device)
+        elif args.model == 'EdgeGCN':
+            model = EdgeGCN(args).to(device)
+        else:
+            raise ValueError("Model not implemented")
+        print(str(model))
+        return model
+    except Exception as e:
+        io.cprint(f"Model loading failed: {e}")
+        raise e
 
 def train(args, io):
     train_loader = DataLoader(ModelNet40(partition='train', num_points=args.num_points), num_workers=8,
@@ -56,19 +78,7 @@ def train(args, io):
     wandb.config.update(args)
     
     #Try to load models
-    if args.model == 'pointnet':
-        model = PointNet(args).to(device)
-    elif args.model == 'dgcnn':
-        model = DGCNN(args).to(device)
-    elif args.model == 'GCN':
-        model = GCN(args).to(device)
-    elif args.model == 'DeepGCN':
-        model = DeepGCN(args).to(device)
-    elif args.model == 'EdgeGCN':
-        model = EdgeGCN(args).to(device)
-    else:
-        raise Exception("Not implemented")
-    print(str(model))
+    model = load_model(args, device)
 
     model = nn.DataParallel(model)
     print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -177,19 +187,7 @@ def test(args, io):
     device = torch.device("cuda" if args.cuda else "cpu")
 
     #Try to load models
-    if args.model == 'pointnet':
-        model = PointNet(args).to(device)
-    elif args.model == 'dgcnn':
-        model = DGCNN(args).to(device)
-    elif args.model == 'GCN':
-        model = GCN(args).to(device)
-    elif args.model == 'DeepGCN':
-        model = DeepGCN(args).to(device)
-    elif args.model == 'EdgeGCN':
-        model = EdgeGCN(args).to(device)
-    else:
-        raise Exception("Not implemented")
-    print(str(model))
+    model = load_model(args, device)
 
     model = nn.DataParallel(model)
     model.load_state_dict(torch.load(args.model_path))
@@ -262,7 +260,7 @@ if __name__ == "__main__":
     parser.add_argument('--act', default='relu', type=str, help='activation layer {relu, prelu, leakyrelu}')
     parser.add_argument('--norm', default='batch', type=str, help='batch or instance normalization {batch, instance}')
     parser.add_argument('--bias', default=True, type=bool, help='bias of conv layer True or False')
-    parser.add_argument('--n_blocks', type=int, default=14, help='number of basic blocks in the backbone')
+    parser.add_argument('--n_blocks', type=int, default=10, help='number of basic blocks in the backbone')
     parser.add_argument('--n_filters', default=64, type=int, help='number of channels of deep features')   
     # dilated knn
     parser.add_argument('--use_dilation', default=True, type=bool, help='use dilated knn or not')
